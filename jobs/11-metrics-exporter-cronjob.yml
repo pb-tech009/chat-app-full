@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: metrics-exporter
+  namespace: chat-app
+spec:
+  schedule: "*/15 * * * *"  # every 15 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 180  # Kill job if running >3 minutes
+      backoffLimit: 2              # Retry twice on failure
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          containers:
+            - name: metrics-exporter
+              image: curlimages/curl:8.1.2  # Pin exact version
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "🚀 Exporting chat metrics..."
+                  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://analytics-service.chat-app.svc.cluster.local:8080/collect)
+                  if [ "$HTTP_CODE" -eq 200 ]; then
+                    echo "✅ Metrics exported successfully"
+                  else
+                    echo "❌ Metrics export failed with HTTP code $HTTP_CODE"
+                    exit 1
+                  fi
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

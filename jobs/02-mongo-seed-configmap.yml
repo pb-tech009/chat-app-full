@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-seed-script
+  namespace: chat-app
+data:
+  seed.js: |
+    // ======= CONFIGURATION =======
+    var dbName = DB_NAME || "chatdb";
+    var adminUsername = ADMIN_USER || "admin";
+    var adminEmail = ADMIN_EMAIL || "admin@example.com";
+    var adminPassword = ADMIN_PASS || "ChangeMe123!";
+
+    // ======= SWITCH TO TARGET DATABASE =======
+    var db = db.getSiblingDB(dbName);
+
+    printjson({ step: "INIT", message: `Seeding MongoDB for database: ${dbName}` });
+
+    // ======= ADMIN USER CREATION =======
+    try {
+      db.users.updateOne(
+        { username: adminUsername },
+        {
+          $setOnInsert: {
+            username: adminUsername,
+            email: adminEmail,
+            role: "admin",
+            password: adminPassword,
+            createdAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+      printjson({ status: "OK", message: "Admin user ensured successfully." });
+    } catch (err) {
+      printjson({ status: "ERROR", step: "Admin user creation", error: err });
+    }
+
+    // ======= INDEX CREATION =======
+    try {
+      db.users.createIndex({ username: 1 }, { unique: true });
+      db.users.createIndex({ email: 1 }, { unique: true });
+      db.messages.createIndex({ chatId: 1, createdAt: -1 });
+      printjson({ status: "OK", message: "Indexes created successfully." });
+    } catch (err) {
+      printjson({ status: "ERROR", step: "Index creation", error: err });
+    }
+
+    // ======= TTL INDEX FOR OLD MESSAGES (30 DAYS) =======
+    try {
+      db.messages.createIndex({ createdAt: 1 }, { expireAfterSeconds: 2592000 });
+      printjson({ status: "OK", message: "TTL index created (30-day expiry)." });
+    } catch (err) {
+      printjson({ status: "ERROR", step: "TTL index creation", error: err });
+    }
+
+    printjson({ status: "DONE", message: "MongoDB seeding completed successfully." });

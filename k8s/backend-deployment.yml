@@ -11,13 +11,12 @@ spec:
   template:
     metadata:
       name: backend-pod
-      namespace: chat-app
       labels: 
         app: backend
     spec:
       containers:
       - name: chatapp-backend
-        image: trainwithshubham/chatapp-backend:latest
+        image: parth1509/chatbackend:latest
         ports:
         - containerPort: 5001
         env:
@@ -30,5 +29,29 @@ spec:
             secretKeyRef:
               name: chatapp-secrets
               key: jwt 
+        - name: CLOUDINARY_CLOUD_NAME
+          valueFrom:
+            secretKeyRef:
+              name: chatapp-secrets
+              key: cloud_name
+        - name: CLOUDINARY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: chatapp-secrets
+              key: api_key
+        - name: CLOUDINARY_API_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: chatapp-secrets
+              key: api_secret
         - name: PORT
           value: "5001"
+        
+        # **# ⚡ ADDED RESOURCES FOR HPA**
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

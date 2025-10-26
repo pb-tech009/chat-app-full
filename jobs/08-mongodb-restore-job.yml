@@ -1,0 +1,82 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongodb-restore-job
+  namespace: chat-app
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: mongorestore
+        image: mongo:4.4
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -e
+            LATEST_BACKUP=$(ls -t /backup/backup-*.gz | head -n1)
+            echo "Restoring from $LATEST_BACKUP ..."
+            mongorestore --uri="mongodb://$MONGO_INITDB_ROOT_USERNAME:$MONGO_INITDB_ROOT_PASSWORD@mongodb:27017/admin" --archive=$LATEST_BACKUP --gzip --drop
+            echo "Restore completed."
+        env:
+          - name: MONGO_INITDB_ROOT_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: chatapp-secrets
+                key: mongo_username
+          - name: MONGO_INITDB_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: chatapp-secrets
+                key: mongo_password
+        volumeMounts:
+          - name: backup-storage
+            mountPath: /backup
+      volumes:
+        - name: backup-storage
+          persistentVolumeClaim:
+            claimName: backup-pvc
+
+
+            # in this this was the sedule so we want to make in this an temporary backeupso this was run otherwise it will be fail
+
+            # kubectl run temp-backup -n chat-app --rm -it --image=mongo:4.4 -- /bin/sh
+
+            # Create backup directory inside mounted PVC
+# mkdir -p /backup
+
+# # Run mongodump
+# mongodump --uri="mongodb://mongoadmin:secret@mongodb:27017/admin" --archive=/backup/backup-temp.gz --gzip
+
+# # Verify the backup
+# ls -l /backup
+
+
+# then create an tempory pod with pvc and this us the yml
+
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: temp-backup-pod
+#   namespace: chat-app
+# spec:
+#   restartPolicy: Never
+#   containers:
+#   - name: mongodump
+#     image: mongo:4.4
+#     command:
+#       - /bin/sh
+#       - -c
+#       - |
+#         mkdir -p /backup
+#         mongodump --uri="mongodb://mongoadmin:secret@mongodb:27017/admin" --archive=/backup/backup-temp.gz --gzip
+#         echo "✅ Temporary backup done"
+#     volumeMounts:
+#       - name: backup-storage
+#         mountPath: /backup
+#   volumes:
+#     - name: backup-storage
+#       persistentVolumeClaim:
+#         claimName: backup-pvc

@@ -4,6 +4,7 @@ metadata:
   name: mongodb
   namespace: chat-app
 spec:
+  clusterIP: None               # Headless service required for StatefulSet
   selector:
     app: mongodb
   ports:

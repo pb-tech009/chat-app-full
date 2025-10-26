@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-migration-script
+  namespace: chat-app
+data:
+  migration.js: |
+    // Switch to target DB
+    db = db.getSiblingDB('chatdb');
+    print("🔁 Starting migration: ensure 'lastSeenAt' field exists...");
+
+    try {
+      // Verify collection exists
+      if (!db.getCollectionNames().includes("users")) {
+        print("⚠️ Collection 'users' does not exist. Skipping migration.");
+        quit(0);
+      }
+
+      // Perform idempotent update
+      const res = db.users.updateMany(
+        { lastSeenAt: { $exists: false } },
+        { $set: { lastSeenAt: new Date(0) } }
+      );
+
+      // Log result
+      if (res.matchedCount === 0) {
+        print("✅ No users without lastSeenAt. Migration not needed.");
+      } else {
+        print(`✅ Migration complete. ${res.modifiedCount} documents updated.`);
+      }
+
+      printjson(res);
+    } catch (e) {
+      print("❌ Migration failed: " + e);
+      quit(1);
+    }
+
+    print("🏁 Migration script finished successfully.");

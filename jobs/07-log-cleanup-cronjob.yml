@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: log-cleanup
+  namespace: chat-app
+spec:
+  schedule: "0 0 * * 0"  # every Sunday at midnight
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: log-cleaner
+            image: busybox:latest
+            command:
+              - /bin/sh
+              - -c
+              - |
+                echo "Cleaning up logs older than 7 days..."
+                find /app/logs -type f -mtime +7 -exec rm -f {} \;
+                echo "Cleanup finished."
+            volumeMounts:
+              - name: app-logs
+                mountPath: /app/logs
+          volumes:
+            - name: app-logs
+              persistentVolumeClaim:
+                claimName: app-logs-pvc

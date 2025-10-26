@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migration-job
+  namespace: chat-app
+  labels:
+    app: chatapp
+    job: db-migration
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 120
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migration
+          image: mongo:4.4
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "🚀 Starting DB migration..."
+              # ✅ FIXED: authenticate on admin database
+              mongo "mongodb://$MONGO_INITDB_ROOT_USERNAME:$MONGO_INITDB_ROOT_PASSWORD@mongodb:27017/admin" /scripts/migration.js
+              status=$?
+              if [ $status -ne 0 ]; then
+                echo "❌ Migration failed with exit code $status"
+                exit $status
+              fi
+              echo "✅ Migration completed successfully."
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: chatapp-secrets
+                  key: mongo_username
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: chatapp-secrets
+                  key: mongo_password
+          volumeMounts:
+            - name: migration-script
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+      volumes:
+        - name: migration-script
+          configMap:
+            name: db-migration-script

@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cleanup-failed-pods
+  namespace: chat-app
+spec:
+  schedule: "0 */6 * * *"  # every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600  # Kill if running >10 minutes
+      backoffLimit: 2              # Retry twice on failure
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: cleanup-sa
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          containers:
+            - name: kubectl
+              image: bitnami/kubectl:1.27.4  # Pin stable version
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "🗑 Starting cleanup of failed pods in namespace chat-app..."
+                  PODS=$(kubectl get pods -n chat-app --field-selector=status.phase=Failed -o jsonpath='{.items[*].metadata.name}')
+                  if [ -z "$PODS" ]; then
+                    echo "✅ No failed pods found."
+                  else
+                    echo "Deleting failed pods: $PODS"
+                    kubectl delete pods $PODS -n chat-app
+                    echo "✅ Cleanup complete."
+                  fi
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

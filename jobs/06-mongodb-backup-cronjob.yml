@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongodb-backup
+  namespace: chat-app
+spec:
+  schedule: "0 2 * * *"  # 2AM daily
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 3600   # Kill if running > 1 hour
+      backoffLimit: 2                # Retry failed jobs twice
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          containers:
+            - name: mongodump
+              image: mongo:4.4.26   # Pin exact minor version
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  BACKUP_PATH="/backup"
+                  TIMESTAMP=$(date +%F-%H%M%S)
+                  ARCHIVE="${BACKUP_PATH}/backup-${TIMESTAMP}.gz"
+                  mkdir -p ${BACKUP_PATH}
+                  echo "🚀 Starting MongoDB backup to ${ARCHIVE}"
+                  mongodump --uri="mongodb://$MONGO_INITDB_ROOT_USERNAME:$MONGO_INITDB_ROOT_PASSWORD@mongodb:27017/admin" --archive=${ARCHIVE} --gzip
+                  echo "🗑 Removing backups older than 30 days..."
+                  find ${BACKUP_PATH} -type f -mtime +30 -delete || true
+                  echo "✅ Backup completed successfully: ${ARCHIVE}"
+              env:
+                - name: MONGO_INITDB_ROOT_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: chatapp-secrets
+                      key: mongo_username
+                - name: MONGO_INITDB_ROOT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: chatapp-secrets
+                      key: mongo_password
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+              resources:
+                requests:
+                  cpu: "200m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: backup-pvc

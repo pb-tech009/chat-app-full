@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: image-cleanup
+  namespace: chat-app
+spec:
+  schedule: "0 3 * * *"  # every day at 3AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 1800  # Kill if job runs >30 mins
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          containers:
+            - name: image-cleaner
+              image: busybox:1.36  # Pin exact version
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  UPLOADS_PATH="/app/uploads"
+                  echo "🗑 Starting image cleanup in ${UPLOADS_PATH}..."
+                  if [ -d "${UPLOADS_PATH}" ]; then
+                    echo "Deleting files older than 30 days:"
+                    find "${UPLOADS_PATH}" -type f -mtime +30 -print -exec rm -f {} \;
+                    echo "✅ Image cleanup completed."
+                  else
+                    echo "⚠️ Directory ${UPLOADS_PATH} does not exist. Skipping cleanup."
+                  fi
+              volumeMounts:
+                - name: uploads-storage
+                  mountPath: /app/uploads
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "128Mi"
+          volumes:
+            - name: uploads-storage
+              persistentVolumeClaim:
+                claimName: uploads-pvc

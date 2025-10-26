@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notification-scripts
+  namespace: chat-app
+data:
+  retry_notifications.js: |
+    // Switch to chatdb
+    db = db.getSiblingDB('chatdb');
+    print("🔁 Starting retry of failed notifications...");
+
+    try {
+      var failures = db.notifications.find({ status: "failed", attempts: { $lt: 5 } }).toArray();
+      print("Found failed notifications:", failures.length);
+
+      if (failures.length === 0) {
+        print("✅ No notifications to retry.");
+      }
+
+      failures.forEach(function(n) {
+        try {
+          db.notifications.updateOne(
+            { _id: n._id },
+            { $set: { status: "retry", lastTried: new Date() }, $inc: { attempts: 1 } }
+          );
+          print("🔁 Retried notification _id:", n._id);
+        } catch (innerErr) {
+          print("❌ Failed to update notification _id:", n._id, "Error:", innerErr);
+        }
+      });
+
+      print("🏁 Retry script finished successfully.");
+    } catch (err) {
+      print("❌ Retry script failed:", err);
+      quit(1);
+    }

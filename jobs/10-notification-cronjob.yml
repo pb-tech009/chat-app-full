@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: notification-sender
+  namespace: chat-app
+spec:
+  schedule: "*/30 * * * *"  # every 30 minutes
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300  # Kill job if running >5 minutes
+      backoffLimit: 2              # Retry twice on failure
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          containers:
+            - name: notification
+              image: curlimages/curl:8.1.2  # Pin exact version
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  echo "🚀 Triggering notification service..."
+                  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://notification-service.chat-app.svc.cluster.local:8080/send-pending)
+                  if [ "$HTTP_CODE" -eq 200 ]; then
+                    echo "✅ Notification triggered successfully"
+                  else
+                    echo "❌ Notification failed with HTTP code $HTTP_CODE"
+                    exit 1
+                  fi
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

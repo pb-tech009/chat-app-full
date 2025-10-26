@@ -1,18 +1,17 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: mongodb-deployment
+  name: mongodb
   namespace: chat-app
 spec:
-  replicas: 1
+  serviceName: "mongodb"           # Headless service for stable DNS
+  replicas: 3                      # 3 replicas (primary + 2 secondary)
   selector:
     matchLabels:
       app: mongodb
   template:
     metadata:
-      name: mongodb-pod
-      namespace: chat-app
-      labels: 
+      labels:
         app: mongodb
     spec:
       containers:
@@ -22,13 +21,28 @@ spec:
         - containerPort: 27017
         env:
         - name: MONGO_INITDB_ROOT_USERNAME
-          value: mongoadmin
+          valueFrom:
+            secretKeyRef:
+              name: chatapp-secrets
+              key: mongo_username
         - name: MONGO_INITDB_ROOT_PASSWORD
-          value: secret
-      volumes:
-      - name: mongo-data
-        persistentVolumeClaim:
-          claimName: mongodb-pvc   
-
-
-
+          valueFrom:
+            secretKeyRef:
+              name: chatapp-secrets
+              key: mongo_password
+        - name: MONGO_REPLICA_SET_NAME        # 👈 new env for replicaset
+          value: "rs0"
+        - name: MONGO_PORT
+          value: "27017"
+        volumeMounts:
+        - name: mongo-data
+          mountPath: /data/db
+  volumeClaimTemplates:
+  - metadata:
+      name: mongo-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 5Gi
+      # storageClassName: local-storage
